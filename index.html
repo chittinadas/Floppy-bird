@@ -2,142 +2,167 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Flappy Bird</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Flappy Bird Ultimate</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #70c5ce; }
-  canvas { border: 2px solid #000; background: url('https://i.postimg.cc/KjNjLv9J/bg.png'); background-size: cover; }
+    body {
+        display:flex;justify-content:center;align-items:center;
+        min-height:100vh;margin:0;overflow:hidden;
+        background:linear-gradient(to bottom,#1e5799,#207cca);
+    }
+    #game-container {
+        position:relative;width:350px;height:600px;
+        border:3px solid #333;border-radius:10px;
+        overflow:hidden;box-shadow:0 0 20px rgba(0,0,0,0.5);
+    }
+    canvas {width:100%;height:100%;display:block;}
+    #score-display {
+        position:absolute;top:20px;left:0;right:0;text-align:center;
+        font-size:40px;font-weight:bold;color:white;
+        text-shadow:2px 2px 4px #000;display:none;z-index:10;
+    }
+    #start-screen,#game-over {
+        position:absolute;top:0;left:0;width:100%;height:100%;
+        display:flex;flex-direction:column;justify-content:center;
+        align-items:center;background:rgba(0,0,0,0.7);
+        color:white;z-index:20;
+    }
+    #game-over{display:none;}
+    h1 {font-size:36px;margin-bottom:20px;color:#ffcc00;text-shadow:2px 2px 4px #000;}
+    button {
+        padding:12px 25px;font-size:18px;font-weight:bold;
+        background:#ffcc00;border:none;border-radius:30px;
+        cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.3);
+    }
+    #countdown {
+        position:absolute;top:50%;left:50%;
+        transform:translate(-50%,-50%);
+        font-size:70px;font-weight:bold;color:#fff;
+        text-shadow:2px 2px 5px #000;display:none;z-index:30;
+    }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="score-display">0</div>
+    <div id="start-screen">
+        <h1>Flappy Bird</h1>
+        <p>Tap or Press Space to fly!</p>
+        <button id="start-button">Start Game</button>
+    </div>
+    <div id="game-over">
+        <h1>Game Over</h1>
+        <div id="final-score">Score: 0</div>
+        <div id="best-score">Best: 0</div>
+        <button id="restart-button">Play Again</button>
+    </div>
+    <div id="countdown">3</div>
+</div>
 
 <script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const canvas=document.getElementById("game-canvas");
+const ctx=canvas.getContext("2d");
+canvas.width=350;canvas.height=600;
 
-const birdImgs = [];
-let birdFrame = 0;
-birdImgs[0] = new Image();
-birdImgs[0].src = "https://i.postimg.cc/jSGxD7xR/bird1.png";
-birdImgs[1] = new Image();
-birdImgs[1].src = "https://i.postimg.cc/J0nV6rrT/bird2.png";
-birdImgs[2] = new Image();
-birdImgs[2].src = "https://i.postimg.cc/44MSkbB4/bird3.png";
+const bg=new Image();bg.src="https://i.postimg.cc/KjNjLv9J/bg.png";
+const ground=new Image();ground.src="https://i.postimg.cc/bY7fHhXR/ground.png";
+const pipeImg=new Image();pipeImg.src="https://i.postimg.cc/DzPwRzhF/pipe.png";
+const birdFrames=[new Image(),new Image(),new Image()];
+birdFrames[0].src="https://i.postimg.cc/jSGxD7xR/bird1.png";
+birdFrames[1].src="https://i.postimg.cc/J0nV6rrT/bird2.png";
+birdFrames[2].src="https://i.postimg.cc/44MSkbB4/bird3.png";
 
-const ground = new Image();
-ground.src = "https://i.postimg.cc/bY7fHhXR/ground.png";
+let gameRunning=false,paused=false,score=0,highScore=localStorage.getItem("flappyHigh")||0;
+let pipes=[],lastTime=0;
+let gravity=600,jumpForce=250,pipeSpeed=120;
+let bird={x:50,y:200,w:34,h:24,vy:0,frame:0,animTime:0};
+let shakeTime=0,groundX=0;
 
-const pipe = new Image();
-pipe.src = "https://i.postimg.cc/DzPwRzhF/pipe.png";
-
-const restartImg = new Image();
-restartImg.src = "https://i.postimg.cc/3RhnJnzm/restart.png";
-
-let bird = {
-  x: 50,
-  y: 200,
-  width: 34,
-  height: 24,
-  gravity: 0.6,
-  lift: -10,
-  velocity: 0
-};
-
-let pipes = [];
-let frame = 0;
-let score = 0;
-let gameOver = false;
-
-document.addEventListener("keydown", () => {
-  bird.velocity = bird.lift;
-});
-
-function resetGame() {
-  bird.y = 200;
-  bird.velocity = 0;
-  pipes = [];
-  score = 0;
-  gameOver = false;
-  loop();
+function resetGame(){
+    bird.y=200;bird.vy=0;bird.frame=0;bird.animTime=0;
+    pipes=[];score=0;groundX=0;
+    document.getElementById("score-display").textContent=score;
 }
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw pipes
-  for (let i = 0; i < pipes.length; i++) {
-    let p = pipes[i];
-    ctx.drawImage(pipe, p.x, 0, 52, p.top);
-    ctx.drawImage(pipe, p.x, canvas.height - p.bottom, 52, p.bottom);
-    
-    p.x -= 2;
-
-    // Check collision
-    if (bird.x < p.x + 52 && bird.x + bird.width > p.x &&
-        (bird.y < p.top || bird.y + bird.height > canvas.height - p.bottom)) {
-      gameOver = true;
-    }
-
-    // Increase score
-    if (!p.passed && p.x + 52 < bird.x) {
-      score++;
-      p.passed = true;
-    }
-  }
-
-  // Remove offscreen pipes
-  pipes = pipes.filter(p => p.x + 52 > 0);
-
-  // Draw ground
-  ctx.drawImage(ground, 0, canvas.height - 112, canvas.width, 112);
-
-  // Draw bird
-  ctx.drawImage(birdImgs[birdFrame], bird.x, bird.y, bird.width, bird.height);
-
-  // Animate bird wings
-  if (frame % 5 === 0) birdFrame = (birdFrame + 1) % birdImgs.length;
-
-  // Bird physics
-  bird.velocity += bird.gravity;
-  bird.y += bird.velocity;
-
-  // Hit ground
-  if (bird.y + bird.height > canvas.height - 112) {
-    bird.y = canvas.height - 112 - bird.height;
-    gameOver = true;
-  }
-
-  // Draw score
-  ctx.fillStyle = "#fff";
-  ctx.font = "30px Arial";
-  ctx.fillText(score, canvas.width / 2 - 10, 50);
+function addPipe(){
+    const gap=130,min=60,max=250;
+    const topH=Math.floor(Math.random()*(max-min)+min);
+    pipes.push({x:canvas.width,w:52,topH:topH,gap:gap});
 }
-
-function loop() {
-  frame++;
-
-  if (frame % 100 === 0) {
-    let topPipeHeight = Math.floor(Math.random() * 200) + 50;
-    let bottomPipeHeight = canvas.height - topPipeHeight - 150;
-    pipes.push({ x: canvas.width, top: topPipeHeight, bottom: bottomPipeHeight, passed: false });
-  }
-
-  draw();
-
-  if (gameOver) {
-    ctx.drawImage(restartImg, canvas.width / 2 - 50, canvas.height / 2 - 50, 100, 100);
-    canvas.addEventListener("click", handleRestart, { once: true });
-  } else {
+function update(dt){
+    if(paused) return;
+    bird.vy+=gravity*dt; bird.y+=bird.vy*dt;
+    bird.animTime+=dt;if(bird.animTime>0.1){bird.frame=(bird.frame+1)%3;bird.animTime=0;}
+    if(bird.y+bird.h>canvas.height-ground.height){gameOver();}
+    if(bird.y<0){bird.y=0;bird.vy=0;}
+    if(pipes.length===0||pipes[pipes.length-1].x<canvas.width-200){addPipe();}
+    for(let p of pipes){
+        p.x-=pipeSpeed*dt;
+        if(p.x+p.w<bird.x && !p.scored){
+            score++;document.getElementById("score-display").textContent=score;p.scored=true;
+        }
+        if(bird.x<p.x+p.w && bird.x+bird.w>p.x){
+            if(bird.y<p.topH||bird.y+bird.h>p.topH+p.gap){gameOver();}
+        }
+    }
+    pipes=pipes.filter(p=>p.x+p.w>0);
+    // ground scroll
+    groundX-=pipeSpeed*dt;
+    if(groundX<=-ground.width) groundX=0;
+}
+function draw(){
+    let ox=0,oy=0;if(shakeTime>0){ox=(Math.random()-0.5)*10;oy=(Math.random()-0.5)*10;}
+    ctx.save();ctx.translate(ox,oy);
+    ctx.drawImage(bg,0,0,canvas.width,canvas.height);
+    for(let p of pipes){
+        ctx.save();ctx.translate(p.x+p.w/2,p.topH/2);ctx.rotate(Math.PI);
+        ctx.drawImage(pipeImg,-p.w/2,-p.topH/2,p.w,p.topH);ctx.restore();
+        let bh=canvas.height-p.topH-p.gap-ground.height;
+        ctx.drawImage(pipeImg,p.x,p.topH+p.gap,p.w,bh);
+    }
+    ctx.drawImage(ground,groundX,canvas.height-ground.height);
+    ctx.drawImage(ground,groundX+ground.width,canvas.height-ground.height);
+    ctx.drawImage(birdFrames[bird.frame],bird.x,bird.y,bird.w,bird.h);
+    ctx.restore();
+}
+function loop(ts){
+    if(!gameRunning)return;
+    const dt=(ts-lastTime)/1000;lastTime=ts;
+    update(dt);draw();
+    if(shakeTime>0)shakeTime-=dt;
     requestAnimationFrame(loop);
-  }
 }
-
-function handleRestart() {
-  resetGame();
+function startGame(){
+    resetGame();
+    document.getElementById("start-screen").style.display="none";
+    document.getElementById("game-over").style.display="none";
+    document.getElementById("score-display").style.display="none";
+    let count=3,cd=document.getElementById("countdown");cd.style.display="block";cd.textContent=count;
+    let timer=setInterval(()=>{
+        count--; if(count>0){cd.textContent=count;}
+        else{clearInterval(timer);cd.textContent="Go!";setTimeout(()=>{cd.style.display="none";},500);
+            document.getElementById("score-display").style.display="block";
+            gameRunning=true;paused=false;lastTime=performance.now();requestAnimationFrame(loop);}
+    },1000);
 }
+function gameOver(){
+    gameRunning=false;shakeTime=0.5;
+    if(score>highScore){highScore=score;localStorage.setItem("flappyHigh",highScore);}
+    document.getElementById("final-score").textContent="Score: "+score;
+    document.getElementById("best-score").textContent="Best: "+highScore;
+    document.getElementById("game-over").style.display="flex";
+    document.getElementById("score-display").style.display="none";
+}
+function flap(){if(gameRunning&&!paused)bird.vy=-jumpForce;}
+function togglePause(){if(gameRunning){paused=!paused;}}
 
-loop();
+document.getElementById("start-button").onclick=startGame;
+document.getElementById("restart-button").onclick=startGame;
+canvas.addEventListener("click",()=>{if(!gameRunning) return; if(paused) togglePause(); else flap();});
+document.addEventListener("keydown",e=>{
+    if(e.code==="Space"){if(!gameRunning) return; if(paused) togglePause(); else flap();e.preventDefault();}
+    if(e.code==="KeyP"){togglePause();}
+});
 </script>
 </body>
 </html>
